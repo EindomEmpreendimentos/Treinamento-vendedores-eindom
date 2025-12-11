@@ -80,7 +80,7 @@ export default function VendedorCreate() {
 
   return (
     <Box component="form" onSubmit={onSubmit} className="grid gap-4">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flexy-between gap-4">
         <div>
           <Typography variant="h4" fontWeight={900}>
             Cadastrar novo vendedor
@@ -121,7 +121,7 @@ export default function VendedorCreate() {
       <Card elevation={0} className="rounded-2xl">
         <CardContent>
           <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
+            <Grid>
               <TextField
                 label="Nome"
                 fullWidth
@@ -129,7 +129,7 @@ export default function VendedorCreate() {
                 onChange={handleChange("first_name")}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid>
               <TextField
                 label="Sobrenome"
                 fullWidth
@@ -138,7 +138,7 @@ export default function VendedorCreate() {
               />
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid>
               <TextField
                 label="Username (login)"
                 fullWidth
@@ -147,7 +147,7 @@ export default function VendedorCreate() {
                 onChange={handleChange("username")}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid>
               <TextField
                 label="E-mail"
                 type="email"
@@ -158,7 +158,7 @@ export default function VendedorCreate() {
               />
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid>
               <TextField
                 label="Senha"
                 fullWidth
@@ -178,7 +178,7 @@ export default function VendedorCreate() {
               />
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid>
               <TextField
                 label="Cargo"
                 fullWidth
@@ -188,7 +188,7 @@ export default function VendedorCreate() {
               />
             </Grid>
 
-            <Grid item xs={12} md={4}>
+            <Grid>
               <TextField
                 label="Celular"
                 fullWidth
@@ -196,10 +196,10 @@ export default function VendedorCreate() {
                 onChange={handleChange("celular")}
               />
             </Grid>
-            <Grid item xs={12} md={4}>
+            <Grid>
               <TextField label="CPF" fullWidth value={form.cpf} onChange={handleChange("cpf")} />
             </Grid>
-            <Grid item xs={12} md={4}>
+            <Grid>
               <TextField label="CNPJ" fullWidth value={form.cnpj} onChange={handleChange("cnpj")} />
             </Grid>
           </Grid>

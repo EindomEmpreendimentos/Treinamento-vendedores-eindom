@@ -127,7 +127,7 @@ export default function AdminDashboard() {
 
         // 2) para cada módulo, buscar métricas
         const metricasList: ModuloMetricasAPI[] = await Promise.all(
-          lista.map((m) => metricasModulo(m.id))
+          lista.map((m: any) => metricasModulo(m.id))
         );
 
         // 3) mapear para o formato usado pelo dashboard

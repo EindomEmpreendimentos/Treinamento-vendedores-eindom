@@ -5,7 +5,6 @@ import { ProtecaoDeRotas } from "./components/ProtecaoDeRotas";
 import { Rotas } from "@routes/routesConfig";
 
 class AppRouter extends React.Component {
-  #configuracoesDeRotas = { v7_startTransition: true };
   rotas: any[];
 
   constructor(props: object) {
@@ -21,7 +20,7 @@ class AppRouter extends React.Component {
     return Rotas.map((rota) => {
       let elemento = rota.element;
 
-      if (rota.protegido) {
+      if (rota.protegido && elemento) {
 
         elemento = <ProtecaoDeRotas element={elemento} />;
       }
@@ -34,7 +33,6 @@ class AppRouter extends React.Component {
     return (
       <RouterProvider
         router={this.#construirRotas()}
-        future={this.#configuracoesDeRotas}
       />
     );
   }

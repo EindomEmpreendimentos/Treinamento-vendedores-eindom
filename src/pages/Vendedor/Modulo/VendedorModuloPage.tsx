@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Alert,
-  Box,
   Button,
   Card,
   CardContent,
@@ -34,7 +33,7 @@ import {
 import { type ModuloDetalheDTO } from "../../../services/treinamento";
 import { type MeusModulosItem } from "../../../services/treinamentoVendedor";
 import { detalheModulo } from "../../../services/treinamento";
-
+import { type ModuloDetalhe } from "../../../services/treinamento";
 type SelectedMap = Record<number, number | null>;
 
 export default function VendedorModuloPage() {
@@ -57,6 +56,32 @@ export default function VendedorModuloPage() {
     aprovado: boolean;
   } | null>(null);
 
+  function mapModuloDetalheToDTO(det: ModuloDetalhe): ModuloDetalheDTO {
+    return {
+      id: det.id,
+      titulo: det.titulo,
+      descricao: det.descricao ?? "", // garante string
+      exigir_consumo_antes_quiz: !!det.exigir_consumo_antes_quiz, // garante boolean
+      conteudos: (det.conteudos ?? []).map((c, idx) => ({
+        id: c.id,
+        tipo: c.tipo,
+        titulo: c.titulo ?? c.url,
+        url: c.url,
+        ordem: idx, // se o back não manda ordem, usa o índice
+      })),
+      perguntas: (det.perguntas ?? []).map((p, idx) => ({
+        id: p.id,
+        titulo: p.titulo,
+        ordem: idx,
+        respostas: p.respostas.map((r) => ({
+          id: r.id,
+          texto: r.texto,
+        })),
+      })),
+    };
+  }
+
+
   useEffect(() => {
     if (!moduloId) return;
     async function carregar() {
@@ -68,7 +93,7 @@ export default function VendedorModuloPage() {
           meusModulos(),
         ]);
 
-        setModulo(det);
+        setModulo(mapModuloDetalheToDTO(det));
 
         const me = meus.find((m) => m.id === moduloId) || null;
         setMeInfo(me || null);
@@ -85,7 +110,7 @@ export default function VendedorModuloPage() {
 
         // zera quiz selecionado quando entra
         const sel: SelectedMap = {};
-        det.perguntas.forEach((p) => {
+        det.perguntas?.forEach((p) => {
           sel[p.id] = null;
         });
         setSelected(sel);
@@ -142,11 +167,10 @@ export default function VendedorModuloPage() {
       return;
     }
 
-    const respostas = modulo.perguntas.map((p) => ({
+    const respostas = (modulo.perguntas ?? []).map((p) => ({
       pergunta_id: p.id,
       resposta_id: selected[p.id] as number,
     }));
-
     setEnviandoQuiz(true);
     try {
       const resp = await responderQuiz(moduloId, { respostas });
@@ -257,14 +281,14 @@ export default function VendedorModuloPage() {
                 </Typography>
               </Stack>
 
-              {modulo.conteudos.length === 0 && (
+              {modulo.conteudos?.length === 0 && (
                 <Typography variant="body2" color="text.secondary">
                   Nenhum conteúdo cadastrado para este módulo.
                 </Typography>
               )}
 
               <div className="grid gap-3">
-                {modulo.conteudos.map((c) => {
+                {modulo.conteudos?.map((c) => {
                   const isVideo = c.tipo === "VIDEO";
                   const isPdf = c.tipo === "PDF";
                   const done = consumidos[c.id];
@@ -374,7 +398,7 @@ export default function VendedorModuloPage() {
                 <Chip
                   size="small"
                   variant="outlined"
-                  label={`${modulo.perguntas.length} perguntas`}
+                  label={`${modulo.perguntas?.length} perguntas`}
                 />
               </Stack>
 
@@ -384,7 +408,7 @@ export default function VendedorModuloPage() {
                 </Alert>
               )}
 
-              {modulo.perguntas.length === 0 && (
+              {modulo.perguntas?.length === 0 && (
                 <Typography variant="body2" color="text.secondary">
                   Nenhuma pergunta cadastrada para este módulo.
                 </Typography>
@@ -393,7 +417,7 @@ export default function VendedorModuloPage() {
               <Divider />
 
               <div className="grid gap-4">
-                {modulo.perguntas.map((p, idx) => (
+                {modulo.perguntas?.map((p, idx) => (
                   <Card
                     key={p.id}
                     elevation={0}

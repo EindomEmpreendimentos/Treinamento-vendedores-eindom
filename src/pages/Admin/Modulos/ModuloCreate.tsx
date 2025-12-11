@@ -85,6 +85,9 @@ export default function ModuloCreate() {
     async function carregar() {
       try {
         setLoadingInicial(true);
+        if (moduloId == null) {
+          return
+        }
         const data = await detalheModulo(moduloId);
 
         setTitulo(data.titulo ?? "");

@@ -44,10 +44,10 @@ export type ModuloPerguntaDTO = {
 export type ModuloDetalheDTO = {
   id: number;
   titulo: string;
-  descricao: string;
-  exigir_consumo_antes_quiz: boolean;
-  conteudos: ModuloConteudoDTO[];
-  perguntas: ModuloPerguntaDTO[];
+  descricao?: string;
+  exigir_consumo_antes_quiz?: boolean;
+  conteudos?: ModuloConteudoDTO[];
+  perguntas?: ModuloPerguntaDTO[];
 };
 
 export type ModuloUpdatePayload = Partial<{
