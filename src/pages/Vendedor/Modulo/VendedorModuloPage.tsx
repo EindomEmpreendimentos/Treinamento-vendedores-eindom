@@ -2,19 +2,29 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Alert,
+  Box,
   Button,
   Card,
   CardContent,
   Chip,
   CircularProgress,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   LinearProgress,
   Stack,
   Typography,
+  Tabs,
+  Tab,
   RadioGroup,
   FormControlLabel,
   Radio,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
+
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import PlayCircleFilledRoundedIcon from "@mui/icons-material/PlayCircleFilledRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
@@ -22,19 +32,31 @@ import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import QuizRoundedIcon from "@mui/icons-material/QuizRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
+import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 
 import Toast from "../../../utils/Toast";
-import {
-  meusModulos,
-  consumirConteudo,
-  responderQuiz,
-} from "../../../services/treinamentoVendedor";
-
+import { meusModulos, consumirConteudo, responderQuiz } from "../../../services/treinamentoVendedor";
+import { detalheModulo, type ModuloDetalhe } from "../../../services/treinamento";
 import { type ModuloDetalheDTO } from "../../../services/treinamento";
 import { type MeusModulosItem } from "../../../services/treinamentoVendedor";
-import { detalheModulo } from "../../../services/treinamento";
-import { type ModuloDetalhe } from "../../../services/treinamento";
+
 type SelectedMap = Record<number, number | null>;
+type Etapa = "video" | "pdf" | "quiz";
+
+function toEmbedYouTube(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtube.com") && u.searchParams.get("v")) {
+      return `https://www.youtube.com/embed/${u.searchParams.get("v")}`;
+    }
+    if (u.hostname === "youtu.be") {
+      return `https://www.youtube.com/embed${u.pathname}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default function VendedorModuloPage() {
   const { id } = useParams();
@@ -47,9 +69,15 @@ export default function VendedorModuloPage() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
+  const [tab, setTab] = useState<Etapa>("video");
+
   const [consumidos, setConsumidos] = useState<Record<number, boolean>>({});
   const [selected, setSelected] = useState<SelectedMap>({});
   const [enviandoQuiz, setEnviandoQuiz] = useState(false);
+
+  const [quizReady, setQuizReady] = useState(false);
+  const [openReadyDialog, setOpenReadyDialog] = useState(false);
+
   const [resultadoQuiz, setResultadoQuiz] = useState<{
     score: number;
     total: number;
@@ -60,14 +88,14 @@ export default function VendedorModuloPage() {
     return {
       id: det.id,
       titulo: det.titulo,
-      descricao: det.descricao ?? "", // garante string
-      exigir_consumo_antes_quiz: !!det.exigir_consumo_antes_quiz, // garante boolean
+      descricao: det.descricao ?? "",
+      exigir_consumo_antes_quiz: !!det.exigir_consumo_antes_quiz,
       conteudos: (det.conteudos ?? []).map((c, idx) => ({
         id: c.id,
         tipo: c.tipo,
         titulo: c.titulo ?? c.url,
         url: c.url,
-        ordem: idx, // se o back não manda ordem, usa o índice
+        ordem: idx,
       })),
       perguntas: (det.perguntas ?? []).map((p, idx) => ({
         id: p.id,
@@ -81,39 +109,39 @@ export default function VendedorModuloPage() {
     };
   }
 
-
   useEffect(() => {
     if (!moduloId) return;
+
     async function carregar() {
       setErro(null);
       setLoading(true);
       try {
-        const [det, meus] = await Promise.all([
-          detalheModulo(moduloId),
-          meusModulos(),
-        ]);
-
-        setModulo(mapModuloDetalheToDTO(det));
+        const [det, meus] = await Promise.all([detalheModulo(moduloId), meusModulos()]);
+        const dto = mapModuloDetalheToDTO(det);
+        setModulo(dto);
 
         const me = meus.find((m) => m.id === moduloId) || null;
-        setMeInfo(me || null);
+        setMeInfo(me);
 
-        // estado inicial "consumido" (se tiver só 1 vídeo e 1 pdf)
+        // consumidos iniciais (como seu código)
         const initial: Record<number, boolean> = {};
-        if (det.conteudos) {
-          det.conteudos.forEach((c) => {
-            if (c.tipo === "VIDEO" && me?.video_ok) initial[c.id] = true;
-            if (c.tipo === "PDF" && me?.pdf_ok) initial[c.id] = true;
-          });
-        }
+        det.conteudos?.forEach((c) => {
+          if (c.tipo === "VIDEO" && me?.video_ok) initial[c.id] = true;
+          if (c.tipo === "PDF" && me?.pdf_ok) initial[c.id] = true;
+        });
         setConsumidos(initial);
 
-        // zera quiz selecionado quando entra
+        // quiz selections
         const sel: SelectedMap = {};
-        det.perguntas?.forEach((p) => {
-          sel[p.id] = null;
-        });
+        det.perguntas?.forEach((p) => (sel[p.id] = null));
         setSelected(sel);
+
+        // tab inicial inteligente
+        const hasVideo = dto.conteudos?.some((c) => c.tipo === "VIDEO" && c.url);
+        const hasPdf = dto.conteudos?.some((c) => c.tipo === "PDF" && c.url);
+        if (hasVideo) setTab("video");
+        else if (hasPdf) setTab("pdf");
+        else setTab("quiz");
       } catch (err: any) {
         const msg =
           err?.response?.data?.detail ||
@@ -125,28 +153,68 @@ export default function VendedorModuloPage() {
         setLoading(false);
       }
     }
+
     carregar();
   }, [moduloId]);
+
+  const videoConteudo = useMemo(
+    () => modulo?.conteudos?.find((c) => c.tipo === "VIDEO"),
+    [modulo]
+  );
+  const pdfConteudo = useMemo(
+    () => modulo?.conteudos?.find((c) => c.tipo === "PDF"),
+    [modulo]
+  );
+
+  const videoUrl = videoConteudo?.url ?? "";
+  const pdfUrl = pdfConteudo?.url ?? "";
+  const youtubeEmbed = videoUrl ? toEmbedYouTube(videoUrl) : null;
+
+  const exigir = !!modulo?.exigir_consumo_antes_quiz;
+
+  const doneVideo = !!(videoConteudo?.id && consumidos[videoConteudo.id]);
+  const donePdf = !!(pdfConteudo?.id && consumidos[pdfConteudo.id]);
 
   const consumoOk = useMemo(() => {
     if (!modulo) return false;
     if (!modulo.exigir_consumo_antes_quiz) return true;
-    // se exige consumo: todos conteúdos marcados
     if (!modulo.conteudos?.length) return true;
     return modulo.conteudos.every((c) => consumidos[c.id]);
   }, [modulo, consumidos]);
 
   const quizCompleto = useMemo(() => {
-    if (!modulo) return false;
-    if (!modulo.perguntas?.length) return false;
+    if (!modulo?.perguntas?.length) return false;
     return modulo.perguntas.every((p) => !!selected[p.id]);
   }, [modulo, selected]);
+
+  const canOpenPdf = !exigir || doneVideo || !videoUrl;
+  const canOpenQuiz = !exigir || (consumoOk && quizReady);
+
+  const stepsTotal = useMemo(() => {
+    const hasVideo = !!videoUrl;
+    const hasPdf = !!pdfUrl;
+    return (hasVideo ? 1 : 0) + (hasPdf ? 1 : 0) + 1;
+  }, [videoUrl, pdfUrl]);
+
+  const stepsDone = useMemo(() => {
+    const hasVideo = !!videoUrl;
+    const hasPdf = !!pdfUrl;
+    return (hasVideo ? (doneVideo ? 1 : 0) : 0) + (hasPdf ? (donePdf ? 1 : 0) : 0) + (quizReady ? 1 : 0);
+  }, [videoUrl, pdfUrl, doneVideo, donePdf, quizReady]);
+
+  const progressPct = stepsTotal ? Math.round((stepsDone / stepsTotal) * 100) : 0;
 
   async function handleConsumir(conteudoId: number) {
     try {
       await consumirConteudo(moduloId, conteudoId);
       setConsumidos((prev) => ({ ...prev, [conteudoId]: true }));
       Toast.mensagem("Conteúdo marcado como consumido ✅");
+
+      // auto-avanço se exigir
+      if (exigir) {
+        if (videoConteudo?.id === conteudoId && pdfUrl) setTab("pdf");
+        if (pdfConteudo?.id === conteudoId) setOpenReadyDialog(true);
+      }
     } catch (err: any) {
       const msg =
         err?.response?.data?.detail ||
@@ -156,10 +224,34 @@ export default function VendedorModuloPage() {
     }
   }
 
+  function tryOpenQuizTab() {
+    if (!exigir) {
+      setTab("quiz");
+      return;
+    }
+    if (!consumoOk) {
+      Toast.erro("Conclua o conteúdo antes de acessar o quiz.");
+      return;
+    }
+    if (!quizReady) {
+      setOpenReadyDialog(true);
+      return;
+    }
+    setTab("quiz");
+  }
+
+  function confirmReady() {
+    setQuizReady(true);
+    setOpenReadyDialog(false);
+    Toast.mensagem("Bora! 🚀 Quiz liberado.");
+    setTab("quiz");
+  }
+
   async function handleEnviarQuiz() {
     if (!modulo) return;
-    if (!consumoOk && modulo.exigir_consumo_antes_quiz) {
-      Toast.erro("Você precisa consumir o conteúdo antes de fazer o quiz.");
+
+    if (exigir && !canOpenQuiz) {
+      Toast.erro("Você precisa concluir o conteúdo e confirmar que está pronto.");
       return;
     }
     if (!quizCompleto) {
@@ -171,10 +263,12 @@ export default function VendedorModuloPage() {
       pergunta_id: p.id,
       resposta_id: selected[p.id] as number,
     }));
+
     setEnviandoQuiz(true);
     try {
       const resp = await responderQuiz(moduloId, { respostas });
       setResultadoQuiz(resp);
+
       Toast.mensagem(
         resp.aprovado
           ? `Parabéns! Você foi aprovado com ${resp.score}/${resp.total} ✅`
@@ -193,15 +287,15 @@ export default function VendedorModuloPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-10">
+      <Box sx={{ display: "flex", justifyContent: "center", py: 10 }}>
         <CircularProgress />
-      </div>
+      </Box>
     );
   }
 
   if (erro || !modulo) {
     return (
-      <div className="grid gap-3">
+      <Box sx={{ display: "grid", gap: 2 }}>
         <Button
           variant="outlined"
           startIcon={<ArrowBackRoundedIcon />}
@@ -213,46 +307,34 @@ export default function VendedorModuloPage() {
         <Alert severity="error" variant="outlined">
           {erro ?? "Módulo não encontrado."}
         </Alert>
-      </div>
+      </Box>
     );
   }
 
   return (
-    <div className="grid gap-5">
+    <Box sx={{ display: "grid", gap: 2.5 }}>
       {/* HEADER */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
+      <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, flexWrap: "wrap" }}>
+        <Box sx={{ minWidth: 260 }}>
           <Typography variant="h4" fontWeight={900}>
             {modulo.titulo}
           </Typography>
+
           {modulo.descricao && (
-            <Typography
-              color="text.secondary"
-              sx={{ mt: 0.5 }}
-              className="whitespace-pre-line"
-            >
+            <Typography color="text.secondary" sx={{ mt: 0.5 }} className="whitespace-pre-line">
               {modulo.descricao}
             </Typography>
           )}
-          <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
+
+          <Stack direction="row" spacing={1} sx={{ mt: 1.2, flexWrap: "wrap", gap: 1 }}>
             {modulo.exigir_consumo_antes_quiz && (
-              <Chip
-                size="small"
-                label="Precisa ver o conteúdo antes do quiz"
-                color="warning"
-                variant="outlined"
-              />
+              <Chip size="small" label="Precisa ver o conteúdo antes do quiz" color="warning" variant="outlined" />
             )}
-            {meInfo?.concluido && (
-              <Chip
-                size="small"
-                label="Módulo concluído"
-                color="success"
-                icon={<CheckCircleRoundedIcon />}
-              />
+            {!!meInfo?.concluido && (
+              <Chip size="small" label="Módulo concluído" color="success" icon={<CheckCircleRoundedIcon />} />
             )}
           </Stack>
-        </div>
+        </Box>
 
         <Button
           variant="outlined"
@@ -262,240 +344,384 @@ export default function VendedorModuloPage() {
         >
           Voltar
         </Button>
-      </div>
+      </Box>
 
-      {/* LAYOUT 2 colunas */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* CONTEÚDOS */}
-        <div className="lg:col-span-1 grid gap-4">
-          <Card
-            elevation={0}
-            className="rounded-2xl"
-            sx={{ border: "1px solid rgba(0,0,0,0.08)" }}
+      {/* PROGRESSO "FASE" */}
+      <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid rgba(0,0,0,0.08)" }}>
+        <CardContent sx={{ display: "grid", gap: 1.25 }}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <EmojiEventsRoundedIcon fontSize="small" />
+            <Typography fontWeight={900}>Seu progresso</Typography>
+            <Chip size="small" variant="outlined" label={`${progressPct}%`} />
+            {resultadoQuiz?.aprovado && (
+              <Chip size="small" color="success" icon={<CheckCircleRoundedIcon />} label="Aprovado ✅" />
+            )}
+          </Stack>
+          <LinearProgress variant="determinate" value={progressPct} sx={{ height: 8, borderRadius: 99 }} />
+
+          {!!meInfo && (
+            <Typography variant="body2" color="text.secondary">
+              Progresso do módulo: <strong>{meInfo.progresso_percent ?? 0}%</strong>
+              {meInfo.quiz_ok ? ` • Último quiz: ${meInfo.score_quiz ?? 0}%` : ""}
+            </Typography>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* CARD PRINCIPAL (COLUNA ÚNICA) */}
+      <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid rgba(0,0,0,0.08)", overflow: "hidden" }}>
+        {/* Tabs (etapas) */}
+        <Box sx={{ borderBottom: "1px solid rgba(0,0,0,0.08)", px: 2 }}>
+          <Tabs
+            value={tab}
+            onChange={(_, v: Etapa) => {
+              if (v === "pdf" && !canOpenPdf) {
+                Toast.erro("Conclua o vídeo antes de abrir o PDF.");
+                return;
+              }
+              if (v === "quiz") {
+                tryOpenQuizTab();
+                return;
+              }
+              setTab(v);
+            }}
+            variant="fullWidth"
+            textColor="primary"
+            indicatorColor="primary"
           >
-            <CardContent className="grid gap-3">
-              <Stack direction="row" spacing={1} alignItems="center">
-                <PlayCircleFilledRoundedIcon />
-                <Typography variant="h6" fontWeight={900}>
-                  Conteúdo
-                </Typography>
-              </Stack>
+            <Tab
+              value="video"
+              disabled={!videoUrl}
+              label={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <PlayCircleFilledRoundedIcon fontSize="small" />
+                  <span>Vídeo</span>
+                  {!!videoUrl && doneVideo && <CheckCircleRoundedIcon fontSize="small" />}
+                </Stack>
+              }
+            />
+            <Tab
+              value="pdf"
+              disabled={!pdfUrl || !canOpenPdf}
+              label={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <PictureAsPdfRoundedIcon fontSize="small" />
+                  <span>PDF</span>
+                  {!!pdfUrl && donePdf && <CheckCircleRoundedIcon fontSize="small" />}
+                </Stack>
+              }
+            />
+            <Tab
+              value="quiz"
+              label={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <QuizRoundedIcon fontSize="small" />
+                  <span>Quiz</span>
+                  {quizReady && <CheckCircleRoundedIcon fontSize="small" />}
+                </Stack>
+              }
+            />
+          </Tabs>
+        </Box>
 
-              {modulo.conteudos?.length === 0 && (
-                <Typography variant="body2" color="text.secondary">
-                  Nenhum conteúdo cadastrado para este módulo.
-                </Typography>
-              )}
+        <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+          {/* ETAPA: VIDEO */}
+          {tab === "video" && (
+            <Box sx={{ display: "grid", gap: 1.5 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
+                <Box>
+                  <Typography variant="h6" fontWeight={900}>
+                    Etapa 1 — Vídeo
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Assista e marque como concluído para liberar a próxima etapa.
+                  </Typography>
+                </Box>
 
-              <div className="grid gap-3">
-                {modulo.conteudos?.map((c) => {
-                  const isVideo = c.tipo === "VIDEO";
-                  const isPdf = c.tipo === "PDF";
-                  const done = consumidos[c.id];
+                {videoConteudo?.id && (
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Tooltip title="Abrir em nova aba">
+                      <IconButton onClick={() => window.open(videoUrl, "_blank")}>
+                        <OpenInNewRoundedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
 
-                  return (
-                    <Card
-                      key={c.id}
-                      elevation={0}
-                      className="rounded-2xl"
-                      sx={{
-                        border: "1px solid rgba(0,0,0,0.10)",
-                        bgcolor: "rgba(15,23,42,0.01)",
-                      }}
-                    >
-                      <CardContent sx={{ p: 2.0 }}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <Stack
-                              direction="row"
-                              spacing={1}
-                              alignItems="center"
-                              sx={{ mb: 0.5 }}
-                            >
-                              {isVideo && <PlayCircleFilledRoundedIcon fontSize="small" />}
-                              {isPdf && <PictureAsPdfRoundedIcon fontSize="small" />}
-                              <Typography fontWeight={800}>{c.titulo || c.url}</Typography>
-                            </Stack>
-                            <Typography variant="body2" color="text.secondary">
-                              {isVideo ? "Vídeo" : isPdf ? "PDF" : "Conteúdo"}
-                            </Typography>
-                          </div>
-
-                          <Stack spacing={1} alignItems="flex-end">
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              sx={{ borderRadius: 999 }}
-                              endIcon={<OpenInNewRoundedIcon fontSize="small" />}
-                              onClick={() => window.open(c.url, "_blank")}
-                            >
-                              Abrir
-                            </Button>
-                            <Button
-                              size="small"
-                              variant={done ? "contained" : "text"}
-                              color={done ? "success" : "primary"}
-                              sx={{ borderRadius: 999, fontSize: 12 }}
-                              onClick={() => handleConsumir(c.id)}
-                            >
-                              {done ? "Consumido" : "Marcar como consumido"}
-                            </Button>
-                          </Stack>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* resumo rápido */}
-          <Card
-            elevation={0}
-            className="rounded-2xl"
-            sx={{ border: "1px solid rgba(0,0,0,0.08)" }}
-          >
-            <CardContent className="grid gap-2">
-              <Typography variant="h6" fontWeight={900}>
-                Progresso
-              </Typography>
-              <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center">
-                <Typography variant="body2" color="text.secondary">
-                  Módulo
-                </Typography>
-                <Typography variant="body2" fontWeight={800}>
-                  {meInfo?.progresso_percent ?? 0}%
-                </Typography>
-              </Stack>
-              <LinearProgress
-                variant="determinate"
-                value={meInfo?.progresso_percent ?? 0}
-                sx={{ height: 8, borderRadius: 99, bgcolor: "rgba(0,0,0,0.06)" }}
-              />
-              {meInfo?.quiz_ok && (
-                <Typography variant="body2" color="text.secondary">
-                  Último quiz: {meInfo.score_quiz ?? 0}% de acerto.
-                </Typography>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* QUIZ */}
-        <div className="lg:col-span-2 grid gap-4">
-          <Card
-            elevation={0}
-            className="rounded-2xl"
-            sx={{ border: "1px solid rgba(0,0,0,0.08)" }}
-          >
-            <CardContent className="grid gap-3">
-              <Stack direction="row" spacing={1} alignItems="center">
-                <QuizRoundedIcon />
-                <Typography variant="h6" fontWeight={900}>
-                  Quiz
-                </Typography>
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  label={`${modulo.perguntas?.length} perguntas`}
-                />
-              </Stack>
-
-              {modulo.exigir_consumo_antes_quiz && !consumoOk && (
-                <Alert severity="info" variant="outlined">
-                  Você precisa marcar os conteúdos como consumidos antes de concluir o quiz.
-                </Alert>
-              )}
-
-              {modulo.perguntas?.length === 0 && (
-                <Typography variant="body2" color="text.secondary">
-                  Nenhuma pergunta cadastrada para este módulo.
-                </Typography>
-              )}
-
-              <Divider />
-
-              <div className="grid gap-4">
-                {modulo.perguntas?.map((p, idx) => (
-                  <Card
-                    key={p.id}
-                    elevation={0}
-                    className="rounded-2xl"
-                    sx={{
-                      border: "1px solid rgba(0,0,0,0.10)",
-                      bgcolor: "rgba(15,23,42,0.01)",
-                    }}
-                  >
-                    <CardContent className="grid gap-2">
-                      <Typography fontWeight={800}>
-                        {idx + 1}. {p.titulo}
-                      </Typography>
-
-                      <RadioGroup
-                        value={selected[p.id] ?? ""}
-                        onChange={(e) =>
-                          setSelected((prev) => ({
-                            ...prev,
-                            [p.id]: Number(e.target.value),
-                          }))
-                        }
+                    {exigir && (
+                      <Button
+                        onClick={() => handleConsumir(videoConteudo.id)}
+                        variant={doneVideo ? "outlined" : "contained"}
+                        disabled={doneVideo}
+                        startIcon={<CheckCircleRoundedIcon />}
+                        sx={{ borderRadius: 2 }}
                       >
-                        {p.respostas.map((r) => (
-                          <FormControlLabel
-                            key={r.id}
-                            value={r.id}
-                            control={<Radio />}
-                            label={r.texto}
-                          />
-                        ))}
-                      </RadioGroup>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                        {doneVideo ? "Vídeo concluído" : "Marcar como assistido"}
+                      </Button>
+                    )}
+                  </Stack>
+                )}
+              </Stack>
 
-              {resultadoQuiz && (
-                <Alert
-                  severity={resultadoQuiz.aprovado ? "success" : "warning"}
-                  variant="outlined"
+              {!videoUrl && (
+                <Alert severity="info">Nenhum vídeo configurado para este módulo.</Alert>
+              )}
+
+              {!!videoUrl && (
+                <Box
+                  sx={{
+                    borderRadius: 2,
+                    overflow: "hidden",
+                    border: "1px solid rgba(0,0,0,0.12)",
+                    bgcolor: "black",
+                    aspectRatio: "16 / 9",
+                  }}
                 >
-                  Você fez {resultadoQuiz.score}/{resultadoQuiz.total}.{" "}
-                  {resultadoQuiz.aprovado
-                    ? "Parabéns, você foi aprovado! ✅"
-                    : "Ainda não foi aprovado, continue treinando."}
+                  {youtubeEmbed ? (
+                    <iframe
+                      src={youtubeEmbed}
+                      title="Vídeo do módulo"
+                      style={{ width: "100%", height: "100%", border: "none" }}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  ) : (
+                    <video
+                      src={videoUrl}
+                      controls
+                      style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                    />
+                  )}
+                </Box>
+              )}
+
+              {exigir && doneVideo && !!pdfUrl && (
+                <Alert severity="success" variant="outlined">
+                  Parabéns! Próxima etapa liberada: <strong>PDF</strong> 🎉
+                </Alert>
+              )}
+            </Box>
+          )}
+
+          {/* ETAPA: PDF */}
+          {tab === "pdf" && (
+            <Box sx={{ display: "grid", gap: 1.5 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
+                <Box>
+                  <Typography variant="h6" fontWeight={900}>
+                    Etapa 2 — PDF
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Leia o material e marque como lido para liberar o quiz.
+                  </Typography>
+                </Box>
+
+                {pdfConteudo?.id && (
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Tooltip title="Abrir em nova aba">
+                      <IconButton onClick={() => window.open(pdfUrl, "_blank")}>
+                        <OpenInNewRoundedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+
+                    {exigir && (
+                      <Button
+                        onClick={() => handleConsumir(pdfConteudo.id)}
+                        variant={donePdf ? "outlined" : "contained"}
+                        disabled={donePdf}
+                        startIcon={<CheckCircleRoundedIcon />}
+                        sx={{ borderRadius: 2 }}
+                      >
+                        {donePdf ? "PDF lido" : "Marcar como lido"}
+                      </Button>
+                    )}
+                  </Stack>
+                )}
+              </Stack>
+
+              {!pdfUrl && <Alert severity="info">Nenhum PDF configurado para este módulo.</Alert>}
+
+              {!!pdfUrl && (
+                <Box
+                  sx={{
+                    borderRadius: 2,
+                    overflow: "hidden",
+                    border: "1px solid rgba(0,0,0,0.12)",
+                    height: { xs: 520, md: 640 },
+                    bgcolor: "rgba(15,23,42,0.98)",
+                  }}
+                >
+                  <iframe
+                    src={pdfUrl}
+                    title="PDF do módulo"
+                    style={{ width: "100%", height: "100%", border: "none" }}
+                  />
+                </Box>
+              )}
+
+              {exigir && donePdf && (
+                <Alert severity="success" variant="outlined">
+                  Boa! Agora confirme que está pronto para o quiz ✅
+                </Alert>
+              )}
+            </Box>
+          )}
+
+          {/* ETAPA: QUIZ */}
+          {tab === "quiz" && (
+            <Box sx={{ display: "grid", gap: 2 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
+                <Box>
+                  <Typography variant="h6" fontWeight={900}>
+                    Etapa 3 — Quiz
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Responda e envie para ver seu resultado.
+                  </Typography>
+                </Box>
+
+                {exigir && !quizReady && (
+                  <Button
+                    variant="contained"
+                    startIcon={<QuizRoundedIcon />}
+                    sx={{ borderRadius: 2 }}
+                    onClick={() => setOpenReadyDialog(true)}
+                    disabled={!consumoOk}
+                  >
+                    Estou pronto para o quiz
+                  </Button>
+                )}
+              </Stack>
+
+              {exigir && !consumoOk && (
+                <Alert severity="info" variant="outlined">
+                  Você precisa concluir o conteúdo antes de acessar o quiz.
                 </Alert>
               )}
 
-              <Divider sx={{ my: 1.5 }} />
+              {exigir && consumoOk && !quizReady && (
+                <Alert severity="warning" variant="outlined">
+                  Último passo: confirme que está pronto para iniciar.
+                </Alert>
+              )}
 
-              <div className="flex justify-end gap-1.5">
-                <Button
-                  variant="outlined"
-                  sx={{ borderRadius: 3 }}
-                  onClick={() => navigate(-1)}
-                  startIcon={<ArrowBackRoundedIcon />}
-                >
-                  Voltar
-                </Button>
-                <Button
-                  variant="contained"
-                  sx={{ borderRadius: 3 }}
-                  startIcon={<SaveRoundedIcon />}
-                  disabled={
-                    enviandoQuiz ||
-                    !quizCompleto ||
-                    (modulo.exigir_consumo_antes_quiz && !consumoOk)
-                  }
-                  onClick={handleEnviarQuiz}
-                >
-                  {enviandoQuiz ? "Enviando..." : "Enviar respostas"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
+              {/* Conteúdo do quiz só aparece quando liberado */}
+              {(!exigir || canOpenQuiz) && (
+                <>
+                  {modulo.perguntas?.length === 0 ? (
+                    <Alert severity="info" variant="outlined">
+                      Nenhuma pergunta cadastrada para este módulo.
+                    </Alert>
+                  ) : (
+                    <Box sx={{ display: "grid", gap: 2 }}>
+                      {modulo.perguntas?.map((p, idx) => (
+                        <Card
+                          key={p.id}
+                          elevation={0}
+                          sx={{
+                            borderRadius: 3,
+                            border: "1px solid rgba(0,0,0,0.10)",
+                            bgcolor: "rgba(15,23,42,0.01)",
+                          }}
+                        >
+                          <CardContent sx={{ display: "grid", gap: 1.25 }}>
+                            <Typography fontWeight={900}>
+                              {idx + 1}. {p.titulo}
+                            </Typography>
+
+                            <RadioGroup
+                              value={selected[p.id] ?? ""}
+                              onChange={(e) =>
+                                setSelected((prev) => ({
+                                  ...prev,
+                                  [p.id]: Number(e.target.value),
+                                }))
+                              }
+                            >
+                              {p.respostas.map((r) => (
+                                <FormControlLabel
+                                  key={r.id}
+                                  value={r.id}
+                                  control={<Radio />}
+                                  label={r.texto}
+                                />
+                              ))}
+                            </RadioGroup>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </Box>
+                  )}
+
+                  {resultadoQuiz && (
+                    <Alert severity={resultadoQuiz.aprovado ? "success" : "warning"} variant="outlined">
+                      Você fez <strong>{resultadoQuiz.score}</strong>/{resultadoQuiz.total}.{" "}
+                      {resultadoQuiz.aprovado ? "Parabéns, você foi aprovado! ✅" : "Ainda não foi aprovado. Continue treinando 💪"}
+                    </Alert>
+                  )}
+
+                  <Divider sx={{ my: 1.5 }} />
+
+                  <Stack direction="row" justifyContent="flex-end" spacing={1.2}>
+                    <Button
+                      variant="outlined"
+                      sx={{ borderRadius: 3 }}
+                      onClick={() => navigate(-1)}
+                      startIcon={<ArrowBackRoundedIcon />}
+                    >
+                      Voltar
+                    </Button>
+
+                    <Button
+                      variant="contained"
+                      sx={{ borderRadius: 3 }}
+                      startIcon={<SaveRoundedIcon />}
+                      disabled={enviandoQuiz || !quizCompleto || (exigir && !canOpenQuiz)}
+                      onClick={handleEnviarQuiz}
+                    >
+                      {enviandoQuiz ? "Enviando..." : "Enviar respostas"}
+                    </Button>
+                  </Stack>
+                </>
+              )}
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Dialog: pronto pro quiz */}
+      <Dialog open={openReadyDialog} onClose={() => setOpenReadyDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 900 }}>Pronto para o quiz?</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Typography color="text.secondary">
+            Confirme apenas quando tiver consumido o conteúdo. Boa sorte! 🍀
+          </Typography>
+
+          {exigir && !consumoOk && (
+            <Alert severity="warning" variant="outlined" sx={{ mt: 2 }}>
+              Você ainda não concluiu todas as etapas do conteúdo.
+            </Alert>
+          )}
+
+          {exigir && consumoOk && (
+            <Alert severity="success" variant="outlined" sx={{ mt: 2 }}>
+              Tudo certo! Conteúdo concluído ✅
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setOpenReadyDialog(false)} variant="outlined" sx={{ borderRadius: 2 }}>
+            Ainda não
+          </Button>
+          <Button
+            onClick={confirmReady}
+            variant="contained"
+            sx={{ borderRadius: 2 }}
+            disabled={exigir && !consumoOk}
+            startIcon={<QuizRoundedIcon />}
+          >
+            Sim, estou pronto
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }

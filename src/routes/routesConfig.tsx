@@ -2,8 +2,8 @@ import { lazy } from "react";
 import type { ReactElement } from "react";
 import type { RouteObject } from "react-router-dom";
 
-import AdminLayout from "../components/Admin/AdminLayout";
-import VendedorLayout from "../components/Vendedor/VendedorLayout";
+import AdminLayout from "../layouts/Admin/AdminLayout";
+import VendedorLayout from "../layouts/Vendedor/VendedorLayout";
 
 import {
   SomenteAdminTreinamento,
@@ -15,8 +15,6 @@ const Login = lazy(() => import("@pages/Autenticacao/Login"));
 const ForgotPassword = lazy(() => import("@pages/Autenticacao/ForgotPassword"));
 const ResetPassword = lazy(() => import("@pages/Autenticacao/ResetPassword"));
 
-// Dashboard genérico (se você ainda usar)
-const Dashboard = lazy(() => import("@pages/Dashboard/Dashboard"));
 
 // Admin treinamentos
 const AdminDashboard = lazy(() => import("@pages/Admin/AdminDashboard"));
@@ -48,14 +46,7 @@ export const Rotas: RotaConfig[] = [
   { path: "/forgot-password", element: <ForgotPassword /> },
   { path: "/reset-password", element: <ResetPassword /> },
 
-  // dashboard genérico (se ainda usar)
-  {
-    path: "/dashboard",
-    protegido: true,
-    element: <Dashboard />,
-  },
 
-  // ===================== ADMIN TREINAMENTOS =====================
   {
     path: "/admin",
     protegido: true,
